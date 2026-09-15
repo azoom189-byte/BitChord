@@ -1,7 +1,5 @@
 package com.bitchord.player.ui
 
-import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,7 +13,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -24,11 +21,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -55,7 +50,17 @@ fun BitChordShell(
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentPage = BitChordPage.fromRoute(backStackEntry?.destination?.route)
+        ?: BitChordPage.YOUTUBE_LIST // fallback while backstack settles on first composition
     val now by playerBus.state.collectAsStateWithLifecycle()
+
+    // Ordered list of bottom-nav destinations. Adjust icons/labels to match your
+    // actual BitChordPage definition (title/icon fields assumed here).
+    val navPages = listOf(
+        BitChordPage.YOUTUBE_LIST,
+        BitChordPage.SOUNDCLOUD_PORTAL,
+        BitChordPage.DEVICE_LIBRARY,
+        BitChordPage.THEME_STUDIO
+    )
 
     Column(
         Modifier
@@ -67,19 +72,19 @@ fun BitChordShell(
                 navController = navController,
                 startDestination = BitChordPage.YOUTUBE_LIST.route,
                 enterTransition = {
-                    slideInHorizontally(tween(320)) { if (targetState.isForwardFrom(initialState)) it / 3 else -it / 3 } +
+                    slideInHorizontally(tween(320)) { if (targetState.destination.route.isForwardFrom(navPages, initialState.destination.route)) it / 3 else -it / 3 } +
                         fadeIn(tween(280))
                 },
                 exitTransition = {
-                    slideOutHorizontally(tween(300)) { if (targetState.isForwardFrom(initialState)) -it / 4 else it / 4 } +
+                    slideOutHorizontally(tween(300)) { if (targetState.destination.route.isForwardFrom(navPages, initialState.destination.route)) -it / 4 else it / 4 } +
                         fadeOut(tween(220))
                 },
                 popEnterTransition = {
-                    slideInHorizontally(tween(320)) { if (targetState.isForwardFrom(initialState)) it / 3 else -it / 3 } +
+                    slideInHorizontally(tween(320)) { if (targetState.destination.route.isForwardFrom(navPages, initialState.destination.route)) it / 3 else -it / 3 } +
                         fadeIn(tween(280))
                 },
                 popExitTransition = {
-                    slideOutHorizontally(tween(300)) { if (targetState.isForwardFrom(initialState)) -it / 4 else it / 4 } +
+                    slideOutHorizontally(tween(300)) { if (targetState.destination.route.isForwardFrom(navPages, initialState.destination.route)) -it / 4 else it / 4 } +
                         fadeOut(tween(220))
                 }
             ) {
@@ -97,7 +102,7 @@ fun BitChordShell(
                 }
             }
 
-            // Floating mini-player sits above every page.
+            // Floating mini-player sits above every page (but under the bottom bar).
             Box(
                 Modifier
                     .fillMaxSize()
@@ -115,5 +120,33 @@ fun BitChordShell(
                 )
             }
         }
+
+        NavigationBar {
+            navPages.forEach { page ->
+                NavigationBarItem(
+                    selected = currentPage == page,
+                    onClick = {
+                        if (currentPage != page) {
+                            navController.navigate(page.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
+                    icon = { Icon(page.icon, contentDescription = page.title) },
+                    label = { Text(page.title) }
+                )
+            }
+        }
     }
+}
+
+// Helper: determines slide direction based on each page's position in navPages.
+private fun String?.isForwardFrom(pages: List<BitChordPage>, from: String?): Boolean {
+    val toIndex = pages.indexOfFirst { it.route == this }
+    val fromIndex = pages.indexOfFirst { it.route == from }
+    return toIndex >= fromIndex
 }
